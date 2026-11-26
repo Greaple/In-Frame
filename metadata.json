@@ -1,0 +1,6 @@
+{
+  "name": "Batch Image Resizer",
+  "description": "Batch resize, reframe, and convert images with common aspect ratios, full resolution preservation, and ZIP archive download.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
