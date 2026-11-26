@@ -22,13 +22,19 @@ import {
   getAspectRatioById,
   parseCustomRatio,
 } from '../constants/aspectRatios';
-import { CropBox, ImageItem, OutputFormat, ResizeSettings } from '../types';
+import { CropBox, ImageItem, OutputFormat } from '../types';
 import {
   calculateCropCoordinates,
   downloadSingleImage,
+  flipReframe,
   getDefaultCropBox,
+  getMimeAndExtension,
+  getOrientedSize,
+  rotateReframeClockwise,
   updateCropBoxForRatio,
 } from '../utils/imageProcessor';
+import { isEditableTarget } from '../utils/keyboard';
+import { CroppedImage, OrientedImage } from './OrientedImage';
 
 interface ReframeModalProps {
   item: ImageItem;
@@ -63,23 +69,34 @@ export const ReframeModal: React.FC<ReframeModalProps> = ({
     startBox: { x: 0, y: 0, width: 1, height: 1 },
   });
 
+  // The crop box lives in displayed (rotated) image space, so all frame maths uses this size.
+  const { width: W, height: H } = getOrientedSize(
+    item.originalWidth,
+    item.originalHeight,
+    item.reframe.rotation
+  );
   const currentRatio = getAspectRatioById(item.aspectRatioId);
-  const targetRatio = currentRatio.ratio ?? item.originalWidth / item.originalHeight;
+  const targetRatio = currentRatio.ratio ?? W / H;
 
   // Active cropBox in normalized [0, 1] coordinates
   const activeCropBox: CropBox = useMemo(() => {
     if (item.reframe.cropBox) {
       return item.reframe.cropBox;
     }
-    return getDefaultCropBox(item.originalWidth, item.originalHeight, currentRatio.ratio);
-  }, [item.reframe.cropBox, item.originalWidth, item.originalHeight, currentRatio.ratio]);
+    return getDefaultCropBox(W, H, currentRatio.ratio);
+  }, [item.reframe.cropBox, W, H, currentRatio.ratio]);
 
   const cropCoords = useMemo(() => calculateCropCoordinates(item), [item]);
+  const cropAspect = cropCoords.cropWidth / cropCoords.cropHeight;
+  const exportsAsPng =
+    getMimeAndExtension(item.outputFormat, item.originalFormat, item.name).mimeType === 'image/png';
 
   // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
+      // Sliders, number fields and selects use the arrow keys themselves.
+      if (isEditableTarget(e.target as HTMLElement | null)) return;
       if (e.key === 'ArrowLeft' && currentIndex > 0) onNavigate(currentIndex - 1);
       if (e.key === 'ArrowRight' && currentIndex < totalCount - 1) onNavigate(currentIndex + 1);
     };
@@ -103,12 +120,7 @@ export const ReframeModal: React.FC<ReframeModalProps> = ({
   const handleRatioSelect = useCallback(
     (ratioId: string) => {
       const newRatioOption = getAspectRatioById(ratioId);
-      const updatedBox = updateCropBoxForRatio(
-        activeCropBox,
-        item.originalWidth,
-        item.originalHeight,
-        newRatioOption.ratio
-      );
+      const updatedBox = updateCropBoxForRatio(activeCropBox, W, H, newRatioOption.ratio);
 
       onUpdateItem({
         ...item,
@@ -119,7 +131,7 @@ export const ReframeModal: React.FC<ReframeModalProps> = ({
         },
       });
     },
-    [activeCropBox, item, onUpdateItem]
+    [activeCropBox, item, onUpdateItem, W, H]
   );
 
   const parsedCustom = useMemo(() => parseCustomRatio(item.aspectRatioId), [item.aspectRatioId]);
@@ -206,33 +218,15 @@ export const ReframeModal: React.FC<ReframeModalProps> = ({
   };
 
   const handleRotate = () => {
-    onUpdateItem({
-      ...item,
-      reframe: {
-        ...item.reframe,
-        rotation: ((item.reframe.rotation || 0) + 90) % 360,
-      },
-    });
+    onUpdateItem({ ...item, reframe: rotateReframeClockwise(item) });
   };
 
   const handleFlipH = () => {
-    onUpdateItem({
-      ...item,
-      reframe: {
-        ...item.reframe,
-        flipH: !item.reframe.flipH,
-      },
-    });
+    onUpdateItem({ ...item, reframe: flipReframe(item, 'h') });
   };
 
   const handleFlipV = () => {
-    onUpdateItem({
-      ...item,
-      reframe: {
-        ...item.reframe,
-        flipV: !item.reframe.flipV,
-      },
-    });
+    onUpdateItem({ ...item, reframe: flipReframe(item, 'v') });
   };
 
   // Quick alignment positions (Center, Top, Bottom, Left, Right)
@@ -262,13 +256,13 @@ export const ReframeModal: React.FC<ReframeModalProps> = ({
 
   // Scale frame size slider (from 20% to 100% of maximum possible fit)
   const currentScale = useMemo(() => {
-    const maxBox = getDefaultCropBox(item.originalWidth, item.originalHeight, targetRatio);
+    const maxBox = getDefaultCropBox(W, H, targetRatio);
     const scaleRatio = activeCropBox.width / maxBox.width;
     return Math.round(Math.max(20, Math.min(100, scaleRatio * 100)));
-  }, [activeCropBox.width, item.originalWidth, item.originalHeight, targetRatio]);
+  }, [activeCropBox.width, W, H, targetRatio]);
 
   const handleScaleSliderChange = (newScalePercent: number) => {
-    const maxBox = getDefaultCropBox(item.originalWidth, item.originalHeight, targetRatio);
+    const maxBox = getDefaultCropBox(W, H, targetRatio);
     const factor = Math.max(0.15, Math.min(1.0, newScalePercent / 100));
     const newW = maxBox.width * factor;
     const newH = maxBox.height * factor;
@@ -321,8 +315,6 @@ export const ReframeModal: React.FC<ReframeModalProps> = ({
       const deltaX = (clientX - dragStartRef.current.clientX) / rect.width;
       const deltaY = (clientY - dragStartRef.current.clientY) / rect.height;
       const { startBox } = dragStartRef.current;
-      const W = item.originalWidth;
-      const H = item.originalHeight;
 
       if (dragMode === 'move') {
         // Direct 1:1 motion: dragging right increases X, dragging down increases Y
@@ -435,7 +427,7 @@ export const ReframeModal: React.FC<ReframeModalProps> = ({
         }
       }
     },
-    [dragMode, item.originalWidth, item.originalHeight, targetRatio, updateCropBox]
+    [dragMode, W, H, targetRatio, updateCropBox]
   );
 
   const handlePointerUp = useCallback(() => {
@@ -513,30 +505,26 @@ export const ReframeModal: React.FC<ReframeModalProps> = ({
         </div>
 
         {/* Modal Main Body */}
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 overflow-hidden">
+        <div className="flex-1 min-h-0 grid grid-cols-1 grid-rows-[auto_minmax(0,1fr)] lg:grid-cols-3 lg:grid-rows-[minmax(0,1fr)] overflow-hidden">
           {/* Main Stage: Full Image in original aspect ratio with overlay crop frame */}
           <div className="lg:col-span-2 bg-slate-950 p-4 md:p-6 flex flex-col items-center justify-center relative select-none overflow-hidden">
+            {/* Fits the stage into whatever space the controls leave (like object-fit: contain). */}
+            <div
+              className="w-full flex-1 min-h-[220px] max-h-[58vh] flex items-center justify-center"
+              style={{ containerType: 'size' }}
+            >
             {/* Container for original image and crop overlay */}
             <div
               ref={containerRef}
               id="original-image-crop-canvas"
-              className="relative max-h-[58vh] max-w-full rounded-xl overflow-hidden shadow-2xl border border-slate-800"
+              className="relative shrink-0 rounded-xl overflow-hidden shadow-2xl border border-slate-800"
               style={{
-                aspectRatio: `${item.originalWidth} / ${item.originalHeight}`,
+                aspectRatio: `${W} / ${H}`,
+                width: `min(100cqw, calc(100cqh * ${W / H}))`,
               }}
             >
-              {/* Full Original Image */}
-              <img
-                src={item.dataUrl}
-                alt={item.name}
-                draggable={false}
-                className="w-full h-full object-contain pointer-events-none select-none"
-                style={{
-                  transform: `rotate(${item.reframe.rotation}deg) scaleX(${
-                    item.reframe.flipH ? -1 : 1
-                  }) scaleY(${item.reframe.flipV ? -1 : 1})`,
-                }}
-              />
+              {/* Full image, rotated and mirrored as it will be exported */}
+              <OrientedImage item={item} alt={item.name} />
 
               {/* Darkened Mask Panels outside the crop frame */}
               {/* Top Mask */}
@@ -633,6 +621,7 @@ export const ReframeModal: React.FC<ReframeModalProps> = ({
                   className="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 bg-white border-2 border-indigo-600 rounded-sm shadow cursor-nwse-resize hover:scale-125 transition-transform"
                 />
               </div>
+            </div>
             </div>
 
             {/* Viewport Floating Controls Bar */}
@@ -743,24 +732,11 @@ export const ReframeModal: React.FC<ReframeModalProps> = ({
                 <div
                   className="relative overflow-hidden rounded-lg shadow-md border border-slate-700 bg-slate-900"
                   style={{
-                    aspectRatio: `${targetRatio}`,
-                    width: targetRatio >= 1 ? 'min(100%, 220px)' : `${Math.round(180 * targetRatio)}px`,
+                    aspectRatio: `${cropAspect}`,
+                    width: cropAspect >= 1 ? 'min(100%, 220px)' : `${Math.round(180 * cropAspect)}px`,
                   }}
                 >
-                  <img
-                    src={item.dataUrl}
-                    alt="Cropped Preview"
-                    className="absolute max-w-none transition-all duration-75 pointer-events-none select-none"
-                    style={{
-                      width: `${(1 / activeCropBox.width) * 100}%`,
-                      height: `${(1 / activeCropBox.height) * 100}%`,
-                      left: `-${(activeCropBox.x / activeCropBox.width) * 100}%`,
-                      top: `-${(activeCropBox.y / activeCropBox.height) * 100}%`,
-                      transform: `rotate(${item.reframe.rotation}deg) scaleX(${
-                        item.reframe.flipH ? -1 : 1
-                      }) scaleY(${item.reframe.flipV ? -1 : 1})`,
-                    }}
-                  />
+                  <CroppedImage item={item} cropBox={activeCropBox} alt="Cropped Preview" />
                 </div>
               </div>
 
@@ -964,7 +940,7 @@ export const ReframeModal: React.FC<ReframeModalProps> = ({
                 </select>
               </div>
 
-              {item.outputFormat !== 'png' && (
+              {!exportsAsPng && (
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-xs font-bold uppercase tracking-wider text-slate-400">

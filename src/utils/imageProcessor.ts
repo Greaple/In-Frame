@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import { getAspectRatioById } from '../constants/aspectRatios';
-import { ImageItem, OutputFormat } from '../types';
+import { CropBox, ImageItem, OutputFormat, ReframeSettings } from '../types';
 
 export function formatBytes(bytes: number, decimals = 1): string {
   if (bytes === 0) return '0 B';
@@ -11,6 +11,10 @@ export function formatBytes(bytes: number, decimals = 1): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
+// Sources that may carry transparency or are lossless graphics: keep them lossless.
+const PNG_SOURCE_TYPES = ['png', 'gif', 'bmp', 'icon', 'svg'];
+const PNG_SOURCE_EXTENSIONS = ['png', 'apng', 'gif', 'bmp', 'ico', 'svg'];
+
 export function getMimeAndExtension(
   targetFormat: OutputFormat,
   originalFormat: string,
@@ -19,9 +23,13 @@ export function getMimeAndExtension(
   let format = targetFormat;
   if (format === 'original') {
     const origLower = originalFormat.toLowerCase();
-    if (origLower.includes('png') || fileName.toLowerCase().endsWith('.png')) {
+    const fileExt = fileName.toLowerCase().split('.').pop() ?? '';
+    if (
+      PNG_SOURCE_TYPES.some((t) => origLower.includes(t)) ||
+      PNG_SOURCE_EXTENSIONS.includes(fileExt)
+    ) {
       format = 'png';
-    } else if (origLower.includes('webp') || fileName.toLowerCase().endsWith('.webp')) {
+    } else if (origLower.includes('webp') || fileExt === 'webp') {
       format = 'webp';
     } else {
       format = 'jpeg';
@@ -39,13 +47,25 @@ export function getMimeAndExtension(
   }
 }
 
+const EXTENSION_FOR_MIME: Record<string, string> = {
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/jpeg': 'jpg',
+};
+
+/**
+ * Builds the output filename. Pass `encodedMime` (the Blob's type) so the extension matches
+ * what the browser really produced: canvas encoders fall back to PNG for unsupported types.
+ */
 export function getOutputFilename(
   originalName: string,
   ratioId: string,
   targetFormat: OutputFormat,
-  originalFormat: string
+  originalFormat: string,
+  encodedMime?: string
 ): string {
-  const { extension } = getMimeAndExtension(targetFormat, originalFormat, originalName);
+  const planned = getMimeAndExtension(targetFormat, originalFormat, originalName).extension;
+  const extension = (encodedMime && EXTENSION_FOR_MIME[encodedMime]) || planned;
   const dotIndex = originalName.lastIndexOf('.');
   const baseName = dotIndex !== -1 ? originalName.substring(0, dotIndex) : originalName;
   const ratioStr = ratioId.replace(/^custom:/, '');
@@ -53,16 +73,100 @@ export function getOutputFilename(
   return `${baseName}${cleanRatio}.${extension}`;
 }
 
-export interface CropCoordinates {
-  sourceX: number;
-  sourceY: number;
-  sourceWidth: number;
-  sourceHeight: number;
-  outputWidth: number;
-  outputHeight: number;
+/**
+ * Makes every name unique (case-insensitively, as on macOS/Windows file systems) by adding
+ * `_2`, `_3`, … before the extension, so ZIP entries never overwrite each other.
+ */
+export function makeUniqueFilenames(names: string[]): string[] {
+  const used = new Set<string>();
+  return names.map((name) => {
+    const dot = name.lastIndexOf('.');
+    const base = dot > 0 ? name.slice(0, dot) : name;
+    const ext = dot > 0 ? name.slice(dot) : '';
+    let candidate = name;
+    for (let n = 2; used.has(candidate.toLowerCase()); n++) {
+      candidate = `${base}_${n}${ext}`;
+    }
+    used.add(candidate.toLowerCase());
+    return candidate;
+  });
 }
 
-import { CropBox } from '../types';
+// ---------------------------------------------------------------------------
+// Orientation
+//
+// The crop box is stored in *displayed* image space: the source image after it has been
+// rotated (clockwise, in 90° steps) and then mirrored on screen. Previews and export both
+// derive their transform from getOrientationMatrix, so what you frame is what you get.
+// ---------------------------------------------------------------------------
+
+/** 2D affine matrix in canvas `setTransform(a, b, c, d, e, f)` order. */
+export interface Matrix {
+  a: number;
+  b: number;
+  c: number;
+  d: number;
+  e: number;
+  f: number;
+}
+
+type Orientation = Pick<ReframeSettings, 'rotation' | 'flipH' | 'flipV'>;
+
+const quarterTurns = (rotation: number) => (((Math.round((rotation || 0) / 90) % 4) + 4) % 4);
+const COS = [1, 0, -1, 0];
+const SIN = [0, 1, 0, -1];
+
+/** Size of the image as displayed, after rotation. */
+export function getOrientedSize(W: number, H: number, rotation: number) {
+  return quarterTurns(rotation) % 2 === 1 ? { width: H, height: W } : { width: W, height: H };
+}
+
+/** Maps source pixel coordinates to displayed-image pixel coordinates. */
+export function getOrientationMatrix(W: number, H: number, orientation: Orientation): Matrix {
+  const q = quarterTurns(orientation.rotation);
+  const fh = orientation.flipH ? -1 : 1;
+  const fv = orientation.flipV ? -1 : 1;
+  // Rotate about the centre, then mirror in screen space: p' = F·R·(p − c) + c'
+  const a = fh * COS[q];
+  const c = -fh * SIN[q];
+  const b = fv * SIN[q];
+  const d = fv * COS[q];
+  const { width: TW, height: TH } = getOrientedSize(W, H, orientation.rotation);
+  return { a, b, c, d, e: TW / 2 - (a * W) / 2 - (c * H) / 2, f: TH / 2 - (b * W) / 2 - (d * H) / 2 };
+}
+
+/** CSS transform for an element showing the source image centred in its displayed box. */
+export function getOrientationCss(orientation: Orientation): string {
+  const { a, b, c, d } = getOrientationMatrix(1, 1, orientation);
+  return `matrix(${a}, ${b}, ${c}, ${d}, 0, 0)`;
+}
+
+/**
+ * Layout (in % of the displayed image box) for an <img> holding the unrotated source, so that
+ * applying getOrientationCss around its centre fills the displayed box exactly.
+ */
+export function getOrientedImageLayout(W: number, H: number, rotation: number) {
+  const { width: TW, height: TH } = getOrientedSize(W, H, rotation);
+  const widthPct = (W / TW) * 100;
+  const heightPct = (H / TH) * 100;
+  return {
+    width: `${widthPct}%`,
+    height: `${heightPct}%`,
+    left: `${(100 - widthPct) / 2}%`,
+    top: `${(100 - heightPct) / 2}%`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Crop box
+// ---------------------------------------------------------------------------
+
+/** Largest normalized box of the given pixel aspect ratio that fits a W x H image. */
+function maxBoxFor(W: number, H: number, ratio: number) {
+  return W / H > ratio
+    ? { width: (H * ratio) / W, height: 1 }
+    : { width: 1, height: W / (ratio * H) };
+}
 
 /**
  * Returns a normalized crop box fitting within source dimensions for a given target ratio
@@ -99,7 +203,8 @@ export function getDefaultCropBox(
 }
 
 /**
- * Updates a crop box when switching aspect ratio while keeping its center location
+ * Fits a crop box to a new aspect ratio, keeping its centre and its size relative to the
+ * largest possible frame. Re-applying the same ratio leaves a box unchanged.
  */
 export function updateCropBoxForRatio(
   currentBox: CropBox | undefined,
@@ -107,71 +212,103 @@ export function updateCropBoxForRatio(
   H: number,
   newRatio: number | null
 ): CropBox {
-  const targetRatio = newRatio ?? W / H;
-  const current = currentBox || getDefaultCropBox(W, H, newRatio);
-
-  // Preserve the center of the existing crop box
-  const centerX = current.x + current.width / 2;
-  const centerY = current.y + current.height / 2;
-
-  // Compute maximum fitting box at targetRatio
-  let maxCropW: number;
-  let maxCropH: number;
-
-  if (W / H > targetRatio) {
-    maxCropH = H;
-    maxCropW = H * targetRatio;
-  } else {
-    maxCropW = W;
-    maxCropH = W / targetRatio;
+  if (!currentBox || !(currentBox.width > 0) || !(currentBox.height > 0)) {
+    return getDefaultCropBox(W, H, newRatio);
   }
 
-  const normW = Math.max(0.05, Math.min(1, maxCropW / W));
-  const normH = Math.max(0.05, Math.min(1, maxCropH / H));
+  const centerX = currentBox.x + currentBox.width / 2;
+  const centerY = currentBox.y + currentBox.height / 2;
 
-  // Re-center
-  let newX = centerX - normW / 2;
-  let newY = centerY - normH / 2;
+  const currentAspect = (currentBox.width * W) / (currentBox.height * H);
+  const scale = Math.max(
+    0.05,
+    Math.min(1, currentBox.width / maxBoxFor(W, H, currentAspect).width)
+  );
 
-  // Clamp within image bounds [0, 1]
-  newX = Math.max(0, Math.min(1 - normW, newX));
-  newY = Math.max(0, Math.min(1 - normH, newY));
+  const target = maxBoxFor(W, H, newRatio ?? W / H);
+  const width = Math.min(1, target.width * scale);
+  const height = Math.min(1, target.height * scale);
 
   return {
-    x: newX,
-    y: newY,
-    width: normW,
-    height: normH,
+    x: Math.max(0, Math.min(1 - width, centerX - width / 2)),
+    y: Math.max(0, Math.min(1 - height, centerY - height / 2)),
+    width,
+    height,
   };
 }
 
+function currentCropBox(item: ImageItem): CropBox {
+  if (item.reframe.cropBox) return item.reframe.cropBox;
+  const { width, height } = getOrientedSize(
+    item.originalWidth,
+    item.originalHeight,
+    item.reframe.rotation
+  );
+  return getDefaultCropBox(width, height, getAspectRatioById(item.aspectRatioId).ratio);
+}
+
 /**
- * Calculates high-precision unscaled crop coordinates in original source image space
+ * Turns the displayed image a quarter turn clockwise. The frame turns with the image (so it
+ * stays on the same content) and is then re-fitted to the selected aspect ratio.
+ */
+export function rotateReframeClockwise(item: ImageItem): ReframeSettings {
+  const box = currentCropBox(item);
+  // Clockwise quarter turn of the displayed image: (u, v) -> (1 - v, u)
+  const turned: CropBox = {
+    x: 1 - box.y - box.height,
+    y: box.x,
+    width: box.height,
+    height: box.width,
+  };
+
+  // Flips are applied on screen after rotation. With exactly one flip active, a further
+  // +90° in source space looks counter-clockwise, so step the other way.
+  const oneFlip = Boolean(item.reframe.flipH) !== Boolean(item.reframe.flipV);
+  const rotation = ((quarterTurns(item.reframe.rotation) + (oneFlip ? 3 : 1)) % 4) * 90;
+
+  const { width, height } = getOrientedSize(item.originalWidth, item.originalHeight, rotation);
+  const ratio = getAspectRatioById(item.aspectRatioId).ratio;
+  return {
+    ...item.reframe,
+    rotation,
+    cropBox: updateCropBoxForRatio(turned, width, height, ratio),
+  };
+}
+
+/** Mirrors the displayed image; the frame is mirrored too, so it stays on the same content. */
+export function flipReframe(item: ImageItem, axis: 'h' | 'v'): ReframeSettings {
+  const box = currentCropBox(item);
+  return axis === 'h'
+    ? { ...item.reframe, flipH: !item.reframe.flipH, cropBox: { ...box, x: 1 - box.x - box.width } }
+    : { ...item.reframe, flipV: !item.reframe.flipV, cropBox: { ...box, y: 1 - box.y - box.height } };
+}
+
+export interface CropCoordinates {
+  /** Crop rectangle in displayed (rotated and mirrored) image pixels. */
+  cropX: number;
+  cropY: number;
+  cropWidth: number;
+  cropHeight: number;
+  outputWidth: number;
+  outputHeight: number;
+}
+
+/**
+ * Calculates the crop rectangle (in displayed-image pixels) and the final output size.
  */
 export function calculateCropCoordinates(item: ImageItem): CropCoordinates {
-  const { originalWidth: W, originalHeight: H, aspectRatioId, reframe, resize } = item;
-  const ratioOption = getAspectRatioById(aspectRatioId);
-  const targetRatio = ratioOption.ratio ?? W / H;
+  const { width: W, height: H } = getOrientedSize(
+    item.originalWidth,
+    item.originalHeight,
+    item.reframe.rotation
+  );
+  const { resize } = item;
+  const box = currentCropBox(item);
 
-  let cropW: number;
-  let cropH: number;
-  let cropX: number;
-  let cropY: number;
-
-  if (reframe.cropBox) {
-    const box = reframe.cropBox;
-    cropW = Math.max(10, Math.min(W, box.width * W));
-    cropH = Math.max(10, Math.min(H, box.height * H));
-    cropX = Math.max(0, Math.min(W - cropW, box.x * W));
-    cropY = Math.max(0, Math.min(H - cropH, box.y * H));
-  } else {
-    // Fallback if cropBox is not yet initialized
-    const defaultBox = getDefaultCropBox(W, H, ratioOption.ratio);
-    cropW = Math.max(10, Math.min(W, defaultBox.width * W));
-    cropH = Math.max(10, Math.min(H, defaultBox.height * H));
-    cropX = Math.max(0, Math.min(W - cropW, defaultBox.x * W));
-    cropY = Math.max(0, Math.min(H - cropH, defaultBox.y * H));
-  }
+  const cropW = Math.max(10, Math.min(W, box.width * W));
+  const cropH = Math.max(10, Math.min(H, box.height * H));
+  const cropX = Math.max(0, Math.min(W - cropW, box.x * W));
+  const cropY = Math.max(0, Math.min(H - cropH, box.y * H));
 
   // Determine final output resolution
   let outW = Math.round(cropW);
@@ -183,19 +320,35 @@ export function calculateCropCoordinates(item: ImageItem): CropCoordinates {
     outH = Math.max(1, Math.round(outH * factor));
   } else if (resize.mode === 'width' && resize.targetWidth && resize.targetWidth > 0) {
     outW = Math.round(resize.targetWidth);
-    outH = Math.max(1, Math.round(resize.targetWidth / targetRatio));
+    outH = Math.max(1, Math.round((resize.targetWidth * cropH) / cropW));
   } else if (resize.mode === 'height' && resize.targetHeight && resize.targetHeight > 0) {
     outH = Math.round(resize.targetHeight);
-    outW = Math.max(1, Math.round(resize.targetHeight * targetRatio));
+    outW = Math.max(1, Math.round((resize.targetHeight * cropW) / cropH));
   }
 
   return {
-    sourceX: cropX,
-    sourceY: cropY,
-    sourceWidth: cropW,
-    sourceHeight: cropH,
+    cropX,
+    cropY,
+    cropWidth: cropW,
+    cropHeight: cropH,
     outputWidth: outW,
     outputHeight: outH,
+  };
+}
+
+/** Maps source pixel coordinates straight to output canvas pixels (orient, crop, scale). */
+export function getExportTransform(item: ImageItem): Matrix {
+  const coords = calculateCropCoordinates(item);
+  const m = getOrientationMatrix(item.originalWidth, item.originalHeight, item.reframe);
+  const sx = coords.outputWidth / coords.cropWidth;
+  const sy = coords.outputHeight / coords.cropHeight;
+  return {
+    a: sx * m.a,
+    b: sy * m.b,
+    c: sx * m.c,
+    d: sy * m.d,
+    e: sx * (m.e - coords.cropX),
+    f: sy * (m.f - coords.cropY),
   };
 }
 
@@ -220,7 +373,6 @@ export async function processImageItem(
   customQuality?: number
 ): Promise<{
   blob: Blob;
-  dataUrl: string;
   width: number;
   height: number;
   size: number;
@@ -252,36 +404,11 @@ export async function processImageItem(
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
-  ctx.save();
-
-  // Handle Rotation and Flipping if applied
-  const rotation = (item.reframe.rotation || 0) % 360;
-  const flipH = item.reframe.flipH ? -1 : 1;
-  const flipV = item.reframe.flipV ? -1 : 1;
-
-  if (rotation !== 0 || flipH === -1 || flipV === -1) {
-    ctx.translate(canvas.width / 2, canvas.height / 2);
-    if (rotation !== 0) {
-      ctx.rotate((rotation * Math.PI) / 180);
-    }
-    ctx.scale(flipH, flipV);
-    ctx.translate(-canvas.width / 2, -canvas.height / 2);
-  }
-
-  // Draw crop region directly to canvas
-  ctx.drawImage(
-    img,
-    coords.sourceX,
-    coords.sourceY,
-    coords.sourceWidth,
-    coords.sourceHeight,
-    0,
-    0,
-    coords.outputWidth,
-    coords.outputHeight
-  );
-
-  ctx.restore();
+  // Orient, crop and scale in one transform; the canvas clips everything outside the crop.
+  const m = getExportTransform(item);
+  ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+  ctx.drawImage(img, 0, 0, item.originalWidth, item.originalHeight);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
 
   const quality = customQuality !== undefined ? customQuality : item.quality ?? 0.92;
 
@@ -292,10 +419,8 @@ export async function processImageItem(
           reject(new Error('Failed to create image Blob from canvas'));
           return;
         }
-        const dataUrl = URL.createObjectURL(blob);
         resolve({
           blob,
-          dataUrl,
           width: coords.outputWidth,
           height: coords.outputHeight,
           size: blob.size,
@@ -318,6 +443,7 @@ export async function downloadAllAsZip(
 
   const zip = new JSZip();
   const total = items.length;
+  const rendered: { name: string; blob: Blob }[] = [];
 
   for (let i = 0; i < total; i++) {
     const item = items[i];
@@ -335,15 +461,18 @@ export async function downloadAllAsZip(
       item.name,
       item.aspectRatioId,
       item.outputFormat,
-      item.originalFormat
+      item.originalFormat,
+      blob.type
     );
-
-    zip.file(filename, blob);
+    rendered.push({ name: filename, blob });
 
     if (onProgress) {
       onProgress(Math.round(((i + 1) / total) * 80), `Prepared: ${filename}`);
     }
   }
+
+  const uniqueNames = makeUniqueFilenames(rendered.map((r) => r.name));
+  rendered.forEach((r, i) => zip.file(uniqueNames[i], r.blob));
 
   if (onProgress) {
     onProgress(85, 'Compressing archive...');
@@ -393,7 +522,8 @@ export async function downloadSingleImage(item: ImageItem): Promise<void> {
     item.name,
     item.aspectRatioId,
     item.outputFormat,
-    item.originalFormat
+    item.originalFormat,
+    blob.type
   );
 
   const url = URL.createObjectURL(blob);
