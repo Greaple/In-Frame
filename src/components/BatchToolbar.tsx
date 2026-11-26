@@ -99,7 +99,8 @@ export const BatchToolbar: React.FC<BatchToolbarProps> = ({
   };
 
   const handleScalePercentChange = (val: number) => {
-    onUpdateGlobalSettings({ scalePercent: val });
+    // Keep the toolbar's mode in step with what the images get (and what new images inherit).
+    onUpdateGlobalSettings({ resizeMode: 'scale', scalePercent: val });
     onApplyResizeToAll('scale', val, globalSettings.targetWidth);
   };
 

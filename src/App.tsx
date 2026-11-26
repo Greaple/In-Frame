@@ -24,9 +24,32 @@ import {
   downloadAllAsZip,
   downloadSingleImage,
   getDefaultCropBox,
+  getOrientedSize,
   loadImage,
   updateCropBoxForRatio,
 } from './utils/imageProcessor';
+
+/** Re-fits an item's frame to a new ratio in its displayed (rotated) image space. */
+function withRatio(item: ImageItem, ratioId: string): ImageItem {
+  const { width, height } = getOrientedSize(
+    item.originalWidth,
+    item.originalHeight,
+    item.reframe.rotation
+  );
+  return {
+    ...item,
+    aspectRatioId: ratioId,
+    reframe: {
+      ...item.reframe,
+      cropBox: updateCropBoxForRatio(
+        item.reframe.cropBox,
+        width,
+        height,
+        getAspectRatioById(ratioId).ratio
+      ),
+    },
+  };
+}
 
 export default function App() {
   const [images, setImages] = useState<ImageItem[]>([]);
@@ -243,25 +266,7 @@ export default function App() {
 
   // Batch actions
   const handleApplyRatioToAll = (ratioId: string) => {
-    const ratioOption = getAspectRatioById(ratioId);
-    setImages((prev) =>
-      prev.map((item) => {
-        const updatedBox = updateCropBoxForRatio(
-          item.reframe.cropBox,
-          item.originalWidth,
-          item.originalHeight,
-          ratioOption.ratio
-        );
-        return {
-          ...item,
-          aspectRatioId: ratioId,
-          reframe: {
-            ...item.reframe,
-            cropBox: updatedBox,
-          },
-        };
-      })
-    );
+    setImages((prev) => prev.map((item) => withRatio(item, ratioId)));
   };
 
   const handleApplyFormatToAll = (format: OutputFormat) => {
@@ -308,26 +313,7 @@ export default function App() {
   };
 
   const handleUpdateRatio = (id: string, ratioId: string) => {
-    const ratioOption = getAspectRatioById(ratioId);
-    setImages((prev) =>
-      prev.map((item) => {
-        if (item.id !== id) return item;
-        const updatedBox = updateCropBoxForRatio(
-          item.reframe.cropBox,
-          item.originalWidth,
-          item.originalHeight,
-          ratioOption.ratio
-        );
-        return {
-          ...item,
-          aspectRatioId: ratioId,
-          reframe: {
-            ...item.reframe,
-            cropBox: updatedBox,
-          },
-        };
-      })
-    );
+    setImages((prev) => prev.map((item) => (item.id === id ? withRatio(item, ratioId) : item)));
   };
 
   const handleUpdateFormat = (id: string, format: OutputFormat) => {

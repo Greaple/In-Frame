@@ -16,7 +16,9 @@ import {
   formatBytes,
   getDefaultCropBox,
   getMimeAndExtension,
+  getOrientedSize,
 } from '../utils/imageProcessor';
+import { CroppedImage } from './OrientedImage';
 
 interface ImageCardProps {
   item: ImageItem;
@@ -40,13 +42,15 @@ export const ImageCard: React.FC<ImageCardProps> = ({
   const { extension } = getMimeAndExtension(item.outputFormat, item.originalFormat, item.name);
 
   const cropBox = useMemo(() => {
+    const oriented = getOrientedSize(item.originalWidth, item.originalHeight, item.reframe.rotation);
     return (
       item.reframe.cropBox ||
-      getDefaultCropBox(item.originalWidth, item.originalHeight, currentRatio.ratio)
+      getDefaultCropBox(oriented.width, oriented.height, currentRatio.ratio)
     );
-  }, [item.reframe.cropBox, item.originalWidth, item.originalHeight, currentRatio.ratio]);
+  }, [item.reframe.cropBox, item.reframe.rotation, item.originalWidth, item.originalHeight, currentRatio.ratio]);
 
-  const targetRatio = currentRatio.ratio ?? item.originalWidth / item.originalHeight;
+  // Frame the preview at the crop's real pixel aspect so it matches the export exactly.
+  const targetRatio = cropCoords.cropWidth / cropCoords.cropHeight;
 
   return (
     <div
@@ -67,20 +71,7 @@ export const ImageCard: React.FC<ImageCardProps> = ({
           }}
         >
           {/* Framed Image positioned according to cropBox */}
-          <img
-            src={item.dataUrl}
-            alt={item.name}
-            className="absolute max-w-none transition-all duration-150 pointer-events-none select-none"
-            style={{
-              width: `${(1 / cropBox.width) * 100}%`,
-              height: `${(1 / cropBox.height) * 100}%`,
-              left: `-${(cropBox.x / cropBox.width) * 100}%`,
-              top: `-${(cropBox.y / cropBox.height) * 100}%`,
-              transform: `rotate(${item.reframe.rotation}deg) scaleX(${
-                item.reframe.flipH ? -1 : 1
-              }) scaleY(${item.reframe.flipV ? -1 : 1})`,
-            }}
-          />
+          <CroppedImage item={item} cropBox={cropBox} alt={item.name} />
 
           {/* Rule of thirds grid hint */}
           <div className="absolute inset-0 pointer-events-none grid grid-cols-3 grid-rows-3 border border-white/20">
