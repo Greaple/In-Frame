@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, Image as ImageIcon, Sparkles, SlidersHorizontal, Download, Layers } from 'lucide-react';
-import { SAMPLE_IMAGES } from '../constants/sampleImages';
+import { Upload } from 'lucide-react';
 
 interface DropZoneProps {
   onFilesSelected: (files: File[]) => void;
@@ -8,6 +7,24 @@ interface DropZoneProps {
   isLoadingSamples: boolean;
   compact?: boolean;
 }
+
+const ACCEPT = 'image/jpeg,image/png,image/webp,image/avif,image/gif,image/*';
+
+/** A small flat landscape used as a decorative stand-in for a photograph. */
+const PrintScene: React.FC<{ sky: string; sun: string; hill: string; ground: string; sunX: number }> = ({
+  sky,
+  sun,
+  hill,
+  ground,
+  sunX,
+}) => (
+  <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" className="block">
+    <rect width="100" height="100" fill={sky} />
+    <circle cx={sunX} cy="32" r="9" fill={sun} />
+    <path d="M0 68 L20 54 L38 63 L60 45 L100 64 L100 100 L0 100 Z" fill={hill} />
+    <path d="M0 84 L28 76 L56 82 L100 73 L100 100 L0 100 Z" fill={ground} />
+  </svg>
+);
 
 export const DropZone: React.FC<DropZoneProps> = ({
   onFilesSelected,
@@ -17,12 +34,6 @@ export const DropZone: React.FC<DropZoneProps> = ({
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(true);
-  };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -40,66 +51,64 @@ export const DropZone: React.FC<DropZoneProps> = ({
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(false);
-
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const validFiles: File[] = [];
-      for (let i = 0; i < e.dataTransfer.files.length; i++) {
-        const file = e.dataTransfer.files[i];
-        if (file.type.startsWith('image/')) {
-          validFiles.push(file);
-        }
-      }
-      if (validFiles.length > 0) {
-        onFilesSelected(validFiles);
-      }
-    }
+    const files = (Array.from(e.dataTransfer.files ?? []) as File[]).filter((f) =>
+      f.type.startsWith('image/')
+    );
+    if (files.length > 0) onFilesSelected(files);
   };
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const files = Array.from(e.target.files);
-      onFilesSelected(files);
-      // Reset input value so same files can be re-selected if deleted
+      onFilesSelected(Array.from(e.target.files));
+      // Reset so the same files can be picked again after removal
       e.target.value = '';
     }
   };
 
-  const triggerPicker = () => {
-    fileInputRef.current?.click();
+  const triggerPicker = () => fileInputRef.current?.click();
+
+  const dropHandlers = {
+    onDragEnter: handleDragOver,
+    onDragOver: handleDragOver,
+    onDragLeave: handleDragLeave,
+    onDrop: handleDrop,
   };
+
+  const surface = isDragOver
+    ? 'border-cinnabar bg-white shadow-lifted'
+    : 'border-dash bg-sheet hover:bg-[#f8f3ee]';
+
+  const input = (
+    <input
+      ref={fileInputRef}
+      type="file"
+      multiple
+      accept={ACCEPT}
+      className="hidden"
+      onChange={handleFileInput}
+    />
+  );
 
   if (compact) {
     return (
       <div
         id="compact-dropzone"
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
+        {...dropHandlers}
         onClick={triggerPicker}
-        className={`border-2 border-dashed rounded-xl p-4 flex items-center justify-between cursor-pointer transition-all ${
-          isDragOver
-            ? 'border-indigo-600 bg-indigo-50/60 dark:bg-indigo-950/20'
-            : 'border-slate-300 hover:border-indigo-400 bg-slate-50/60 hover:bg-slate-100/60 dark:border-slate-700 dark:bg-slate-900/40'
-        }`}
+        className={`w-full box-border flex flex-wrap items-center justify-between gap-3 px-5 py-4 rounded-2xl border-[1.5px] border-dashed cursor-pointer transition-colors shadow-[inset_0_1px_3px_rgba(31,26,22,0.05)] ${surface}`}
       >
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/*"
-          className="hidden"
-          onChange={handleFileInput}
-        />
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300">
-            <UploadCloud className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-              Drag & drop more images here or <span className="text-indigo-600 underline">browse</span>
-            </p>
-            <p className="text-xs text-slate-500">Supports JPEG, PNG, WebP & more</p>
+        {input}
+        <div className="flex items-center gap-3.5">
+          <span className="size-10 rounded-full bg-well text-sienna flex items-center justify-center">
+            <Upload className="size-[18px]" strokeWidth={1.75} aria-hidden="true" />
+          </span>
+          <div className="flex flex-col">
+            <span className="text-[15px] leading-[22px] font-semibold">
+              {isDragOver ? 'Let go to lay them down' : 'Lay more prints on the table'}
+            </span>
+            <span className="text-[13px] leading-[19px] text-ink-muted">
+              Drop JPEG, PNG or WebP files here, or browse
+            </span>
           </div>
         </div>
         <button
@@ -108,9 +117,9 @@ export const DropZone: React.FC<DropZoneProps> = ({
             e.stopPropagation();
             triggerPicker();
           }}
-          className="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition"
+          className="btn-quiet min-h-10 bg-desk text-[13px]"
         >
-          Add Images
+          Browse files
         </button>
       </div>
     );
@@ -119,91 +128,67 @@ export const DropZone: React.FC<DropZoneProps> = ({
   return (
     <div
       id="main-dropzone"
-      onDragEnter={handleDragEnter}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      {...dropHandlers}
       onClick={triggerPicker}
-      className={`relative border-2 border-dashed rounded-2xl p-10 md:p-14 text-center cursor-pointer transition-all duration-200 ${
-        isDragOver
-          ? 'border-indigo-600 bg-indigo-50/70 scale-[1.008] shadow-lg shadow-indigo-100 dark:bg-indigo-950/30'
-          : 'border-slate-300 hover:border-indigo-400 bg-white hover:bg-slate-50/70 shadow-sm dark:border-slate-700 dark:bg-slate-900/50'
-      }`}
+      className={`relative box-border rounded-2xl border-[1.5px] border-dashed px-8 py-10 flex flex-col items-center gap-5 text-center cursor-pointer transition-colors shadow-[inset_0_1px_3px_rgba(31,26,22,0.06)] ${surface}`}
     >
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept="image/jpeg,image/png,image/webp,image/avif,image/gif,image/*"
-        className="hidden"
-        onChange={handleFileInput}
-      />
+      {input}
 
-      <div className="max-w-xl mx-auto flex flex-col items-center">
-        <div className="w-16 h-16 mb-5 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 border border-indigo-100 shadow-sm dark:bg-indigo-950/50 dark:border-indigo-900/40">
-          <UploadCloud className="w-8 h-8" />
+      <div aria-hidden="true" className="relative w-[260px] h-[170px]">
+        <div className="absolute left-1.5 top-[26px] size-[120px] p-[5px] box-border bg-white border border-hairline rounded-[3px] -rotate-[7deg] shadow-lifted">
+          <PrintScene sky="#E7D3BC" sun="#F3B48E" hill="#9A8C7A" ground="#5E6953" sunX={68} />
         </div>
-
-        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2 tracking-tight">
-          Drop your images here, or <span className="text-indigo-600 underline">browse files</span>
-        </h3>
-        <p className="text-sm text-slate-600 dark:text-slate-400 mb-6 max-w-md">
-          Batch crop, reframe, and convert multiple photos to common aspect ratios while keeping 100% native resolution.
-        </p>
-
-        {/* Feature Pills */}
-        <div className="flex flex-wrap items-center justify-center gap-2 mb-8 text-xs font-medium text-slate-600 dark:text-slate-300">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            Full Native Resolution
-          </span>
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            <Layers className="w-3.5 h-3.5 text-indigo-500" />
-            1:1, 4:5, 9:16, 16:9 & more
-          </span>
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-500" />
-            JPEG · PNG · WebP Output
-          </span>
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-            <Download className="w-3.5 h-3.5 text-sky-500" />
-            Single-click ZIP Export
-          </span>
+        <div className="absolute right-1 top-2 w-[104px] h-[140px] p-[5px] box-border bg-white border border-hairline rounded-[3px] rotate-6 shadow-lifted">
+          <PrintScene sky="#D9DFCF" sun="#F5BA92" hill="#7E5231" ground="#404A36" sunX={40} />
         </div>
-
-        {/* Primary Action Button and Sample Loader */}
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          <button
-            id="choose-files-button"
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              triggerPicker();
-            }}
-            className="px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold text-sm shadow-sm transition hover:shadow flex items-center gap-2"
-          >
-            <ImageIcon className="w-4 h-4" />
-            Select Images to Resize
-          </button>
-
-          <button
-            id="load-sample-images-button"
-            type="button"
-            disabled={isLoadingSamples}
-            onClick={(e) => {
-              e.stopPropagation();
-              onLoadSamples();
-            }}
-            className="px-5 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium text-sm transition flex items-center gap-2 border border-slate-200 dark:border-slate-700 disabled:opacity-50"
-          >
-            {isLoadingSamples ? (
-              <div className="w-4 h-4 border-2 border-slate-500 border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <Sparkles className="w-4 h-4 text-indigo-500" />
-            )}
-            Load Demo Images
-          </button>
+        <div
+          className={`absolute left-16 top-11 w-[136px] h-[118px] p-[5px] box-border bg-white border border-hairline rounded-[3px] shadow-tray transition-transform duration-300 ${
+            isDragOver ? '-translate-y-1.5' : ''
+          }`}
+        >
+          <PrintScene sky="#F1D9C3" sun="#C85A32" hill="#C99A72" ground="#9A6A47" sunX={62} />
+          <span className="absolute inset-3.5 border-[1.5px] border-cinnabar rounded-[1px]" />
         </div>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <h2 className="m-0 font-serif text-[26px] leading-[34px] font-medium tracking-[-0.01em]">
+          {isDragOver ? 'Let go to lay them down' : 'Lay your prints on the table'}
+        </h2>
+        <p className="m-0 text-ink-muted">Drag images here — JPEG, PNG, WebP, AVIF or GIF.</p>
+      </div>
+
+      <div className="flex flex-wrap justify-center gap-2.5">
+        <button
+          id="choose-files-button"
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            triggerPicker();
+          }}
+          className="btn-stamp min-h-12 px-6 text-[15px]"
+        >
+          <Upload className="size-[17px]" strokeWidth={1.75} aria-hidden="true" />
+          Choose images
+        </button>
+        <button
+          id="load-sample-images-button"
+          type="button"
+          disabled={isLoadingSamples}
+          onClick={(e) => {
+            e.stopPropagation();
+            onLoadSamples();
+          }}
+          className="btn-quiet min-h-12 px-[22px] text-[15px]"
+        >
+          {isLoadingSamples && (
+            <span
+              aria-hidden="true"
+              className="size-4 rounded-full border-2 border-ink-muted border-t-transparent animate-spin"
+            />
+          )}
+          {isLoadingSamples ? 'Developing demo prints…' : 'Load demo prints'}
+        </button>
       </div>
     </div>
   );

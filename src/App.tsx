@@ -1,33 +1,51 @@
 import React, { useState, useRef, useCallback } from 'react';
-import {
-  Crop,
-  Layers,
-  Sparkles,
-  Download,
-  UploadCloud,
-  Sliders,
-  CheckCircle2,
-  Info,
-  Maximize,
-  FileImage,
-  RefreshCw,
-} from 'lucide-react';
+import { Aperture, Archive, Layers, Lock, Plus, Scan } from 'lucide-react';
 import { DropZone } from './components/DropZone';
-import { BatchToolbar } from './components/BatchToolbar';
+import { StockRail } from './components/StockRail';
+import { DevelopingPanel } from './components/DevelopingPanel';
 import { ImageCard } from './components/ImageCard';
 import { ReframeModal } from './components/ReframeModal';
 import { ZipProgressModal } from './components/ZipProgressModal';
-import { COMMON_ASPECT_RATIOS, getAspectRatioById } from './constants/aspectRatios';
+import { getAspectRatioById } from './constants/aspectRatios';
 import { SAMPLE_IMAGES } from './constants/sampleImages';
 import { BatchGlobalSettings, ImageItem, OutputFormat, ResizeMode } from './types';
 import {
   downloadAllAsZip,
   downloadSingleImage,
+  formatBytes,
   getDefaultCropBox,
   getOrientedSize,
   loadImage,
   updateCropBoxForRatio,
 } from './utils/imageProcessor';
+
+const FEATURES = [
+  {
+    icon: Layers,
+    title: 'Common',
+    emphasis: 'stock',
+    rest: 'ratios',
+    body: 'Square, portrait, story, widescreen or classic 35 mm — set once for the batch, then adjust any print on its own.',
+    note: '10 stocks · or any W : H',
+  },
+  {
+    icon: Aperture,
+    title: 'Native',
+    emphasis: 'resolution',
+    rest: '',
+    body: 'Each crop is cut from the original pixels with high-quality smoothing. Nothing is shrunk unless you ask for a smaller size.',
+    note: 'Full source pixels · what you frame is what you get',
+  },
+  {
+    icon: Archive,
+    title: 'Bound as',
+    emphasis: 'one ZIP',
+    rest: '',
+    body: 'Convert to JPEG, PNG or WebP at the quality you choose, then take the whole batch home in a single archive.',
+    note: 'JPEG · PNG · WebP · one download',
+  },
+];
+
 
 /** Re-fits an item's frame to a new ratio in its displayed (rotated) image space. */
 function withRatio(item: ImageItem, ratioId: string): ImageItem {
@@ -366,12 +384,25 @@ export default function App() {
     }
   };
 
+
   const activeIndex = activeModalItem
     ? images.findIndex((img) => img.id === activeModalItem.id)
     : -1;
 
+  const updateGlobalSettings = (settings: Partial<BatchGlobalSettings>) =>
+    setGlobalSettings((prev) => ({ ...prev, ...settings }));
+
+  const handleBatchRatioChange = (ratioId: string) => {
+    updateGlobalSettings({ aspectRatioId: ratioId });
+    handleApplyRatioToAll(ratioId);
+  };
+
+  const originalsSize = formatBytes(images.reduce((sum, img) => sum + img.originalSize, 0));
+  const printCount = `${images.length} ${images.length === 1 ? 'print' : 'prints'}`;
+  const proofCount = `${images.length} ${images.length === 1 ? 'proof' : 'proofs'}`;
+
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-desk text-ink flex flex-col">
       {/* Hidden file picker trigger */}
       <input
         ref={fileInputTriggerRef}
@@ -387,114 +418,132 @@ export default function App() {
         }}
       />
 
-      {/* Top Navigation / App Header */}
-      <header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-200 dark:shadow-none">
-              <Crop className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-base sm:text-lg font-bold tracking-tight text-slate-900 dark:text-white">
-                Batch Image Resizer
-              </h1>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block">
-                Crop, reframe & convert in batch · Full native resolution preservation
-              </p>
+      <header className="md:sticky top-0 z-30 bg-desk/90 backdrop-blur-md border-b border-hairline">
+        <div className="max-w-[1440px] mx-auto px-5 md:px-8 xl:px-12 py-3.5 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <span className="size-10 rounded-lg bg-ink text-desk flex items-center justify-center">
+              <Scan className="size-5" strokeWidth={1.75} aria-hidden="true" />
+            </span>
+            <div className="flex flex-col">
+              <span className="font-serif text-2xl leading-7 font-medium tracking-[-0.01em]">
+                In-Frame
+              </span>
+              <span className="archival">
+                {images.length > 0
+                  ? `${printCount} on the table`
+                  : 'A small atelier for batch reframing'}
+              </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {images.length > 0 && (
+          {images.length > 0 ? (
+            <nav aria-label="Batch actions" className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputTriggerRef.current?.click()}
+                className="btn-quiet"
+              >
+                <Plus className="size-4" aria-hidden="true" />
+                Add prints
+              </button>
+              <button
+                id="clear-all-images-button"
+                type="button"
+                onClick={handleClearAll}
+                className="btn-ghost"
+              >
+                Clear table
+              </button>
               <button
                 id="header-download-zip-btn"
                 type="button"
                 disabled={isProcessingZip}
                 onClick={handleDownloadZip}
-                className="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-sm flex items-center gap-2 transition disabled:opacity-50"
+                className="btn-stamp"
               >
-                <Download className="w-4 h-4" />
-                <span>Export {images.length} as ZIP</span>
+                <Archive className="size-4" aria-hidden="true" />
+                Bind {proofCount} as ZIP
               </button>
-            )}
-          </div>
+            </nav>
+          ) : (
+            <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-sage-soft text-sage-ink text-xs leading-4 font-semibold">
+              <Lock className="size-3.5" aria-hidden="true" />
+              Everything stays in your browser
+            </span>
+          )}
         </div>
       </header>
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        {/* If no images loaded yet: Full Welcome Dropzone */}
-        {images.length === 0 ? (
-          <div className="py-8 space-y-8">
-            <DropZone
-              onFilesSelected={processFiles}
-              onLoadSamples={handleLoadSamples}
-              isLoadingSamples={isLoadingSamples}
-            />
-
-            {/* Explanatory cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-2">
-                <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center font-bold">
-                  <Layers className="w-4 h-4" />
-                </div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Common Aspect Ratios
-                </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Batch apply square (1:1), portrait (4:5, 9:16), widescreen (16:9), or classic 35mm
-                  (3:2) in one click or customize individually.
-                </p>
-              </div>
-
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-2">
-                <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center font-bold">
-                  <Sparkles className="w-4 h-4" />
-                </div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Native Crisp Resolution
-                </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Crops are calculated directly from original source pixel coordinates with high
-                  smoothing, avoiding unnecessary downsampling or blur.
-                </p>
-              </div>
-
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-2">
-                <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center font-bold">
-                  <Download className="w-4 h-4" />
-                </div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Multi-Format ZIP Export
-                </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Convert to JPEG, PNG, or WebP with adjustable compression quality, and package
-                  all files directly into a single zip archive.
-                </p>
+      {images.length === 0 ? (
+        <main className="flex-1 max-w-[1440px] w-full mx-auto px-5 md:px-8 xl:px-12 pt-10 md:pt-14 pb-16 flex flex-col gap-14">
+          <section className="flex flex-wrap items-center gap-12">
+            <div className="flex-[1_1_420px] min-w-0 flex flex-col gap-5">
+              <span className="label-caps text-sienna">Batch reframing · JPEG · PNG · WebP</span>
+              <h1 className="m-0 max-w-[560px] font-serif font-normal text-[34px] leading-[42px] tracking-[-0.015em] md:text-5xl md:leading-[56px] md:tracking-[-0.02em]">
+                Crop, reframe and convert <em className="text-stamp">a whole batch</em> — at full
+                resolution.
+              </h1>
+              <p className="m-0 max-w-[520px] text-base leading-[26px] text-ink-muted">
+                Lay your photographs out like a contact sheet, choose a stock ratio once, then
+                nudge any print by hand. Every crop is cut from the original pixels and bound into
+                one ZIP.
+              </p>
+              <div className="archival flex flex-wrap gap-x-5 gap-y-2">
+                <span>1:1 · 4:5 · 9:16 · 16:9 · 3:2 · custom</span>
+                <span>Rotate &amp; mirror</span>
+                <span>Quality from 50 to 100</span>
               </div>
             </div>
-          </div>
-        ) : (
-          /* Workspace with loaded batch */
-          <div className="space-y-6">
-            {/* Batch Controls Toolbar */}
-            <BatchToolbar
-              totalCount={images.length}
-              globalSettings={globalSettings}
-              onUpdateGlobalSettings={(newSettings) =>
-                setGlobalSettings((prev) => ({ ...prev, ...newSettings }))
-              }
-              onApplyRatioToAll={handleApplyRatioToAll}
-              onApplyFormatToAll={handleApplyFormatToAll}
-              onApplyQualityToAll={handleApplyQualityToAll}
-              onApplyResizeToAll={handleApplyResizeToAll}
-              onDownloadZip={handleDownloadZip}
-              onAddMoreClick={() => fileInputTriggerRef.current?.click()}
-              onClearAll={handleClearAll}
-              isProcessingZip={isProcessingZip}
-            />
+            <div className="flex-[1_1_520px] min-w-0">
+              <DropZone
+                onFilesSelected={processFiles}
+                onLoadSamples={handleLoadSamples}
+                isLoadingSamples={isLoadingSamples}
+              />
+            </div>
+          </section>
 
-            {/* Compact DropZone for dragging additional images onto existing batch */}
+          <section
+            aria-label="What In-Frame does"
+            className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-5"
+          >
+            {FEATURES.map(({ icon: Icon, title, emphasis, rest, body, note }) => (
+              <article key={emphasis} className="sheet p-6 flex flex-col gap-2.5">
+                <span className="size-10 rounded-full bg-well text-sienna flex items-center justify-center">
+                  <Icon className="size-[18px]" strokeWidth={1.75} aria-hidden="true" />
+                </span>
+                <h3 className="m-0 font-serif text-xl leading-7 font-medium">
+                  {title} <em>{emphasis}</em> {rest}
+                </h3>
+                <p className="m-0 text-ink-muted">{body}</p>
+                <span className="mt-auto font-serif text-[13px] leading-4 text-sage">{note}</span>
+              </article>
+            ))}
+          </section>
+        </main>
+      ) : (
+        <main className="flex-1 max-w-[1440px] w-full mx-auto px-5 md:px-8 xl:px-12 pt-7 pb-14 flex flex-wrap items-start gap-7">
+          <StockRail
+            aspectRatioId={globalSettings.aspectRatioId}
+            onRatioChange={handleBatchRatioChange}
+          />
+
+          <section
+            aria-labelledby="sheet-heading"
+            className="flex-[999_1_560px] min-w-0 flex flex-col gap-5 max-md:order-first"
+          >
+            <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+              <h1
+                id="sheet-heading"
+                className="m-0 font-serif font-normal text-[28px] leading-9 tracking-[-0.01em] md:text-4xl md:leading-[44px] md:tracking-[-0.015em]"
+              >
+                The contact sheet
+              </h1>
+              <span className="archival">
+                {printCount} · {originalsSize} of originals
+              </span>
+            </div>
+
             <DropZone
               onFilesSelected={processFiles}
               onLoadSamples={handleLoadSamples}
@@ -502,8 +551,7 @@ export default function App() {
               compact
             />
 
-            {/* Image Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-5">
               {images.map((item) => (
                 <ImageCard
                   key={item.id}
@@ -516,11 +564,21 @@ export default function App() {
                 />
               ))}
             </div>
-          </div>
-        )}
-      </main>
+          </section>
 
-      {/* Interactive Reframing & Cropping Modal */}
+          <DevelopingPanel
+            totalCount={images.length}
+            globalSettings={globalSettings}
+            onUpdateGlobalSettings={updateGlobalSettings}
+            onApplyFormatToAll={handleApplyFormatToAll}
+            onApplyQualityToAll={handleApplyQualityToAll}
+            onApplyResizeToAll={handleApplyResizeToAll}
+            onDownloadZip={handleDownloadZip}
+            isProcessingZip={isProcessingZip}
+          />
+        </main>
+      )}
+
       {activeModalItem && (
         <ReframeModal
           item={activeModalItem}
@@ -536,12 +594,11 @@ export default function App() {
         />
       )}
 
-      {/* Real-time ZIP Compression and Packaging Progress Modal */}
       <ZipProgressModal
         isOpen={isProcessingZip}
         progress={zipProgress}
         statusText={zipStatusText}
-        totalImages={images.length}
+        images={images}
       />
     </div>
   );

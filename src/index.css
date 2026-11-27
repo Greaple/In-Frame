@@ -1,1 +1,171 @@
 @import "tailwindcss";
+
+/* Linen & Proof Atelier — warm paper surfaces, walnut ink, cinnabar stamp. */
+@theme {
+  --font-serif: "Newsreader", Georgia, serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
+
+  --color-desk: #faf7f2; /* level 0: base canvas */
+  --color-sheet: #f5efeb; /* level 1: cards, panels, trays */
+  --color-well: #ede4da; /* level 2: inset wells, tracks */
+  --color-well-hover: #e5ddd1;
+  --color-hairline: #e8e0d5; /* paper edges */
+  --color-fiber: #dfd5c7; /* control borders */
+  --color-dash: #c9b9a6; /* drop zones, empty frames */
+  --color-ink: #1f1a16; /* espresso walnut */
+  --color-ink-muted: #57423b;
+  --color-stamp: #9f3c16; /* primary actions (text-safe cinnabar) */
+  --color-stamp-hover: #822801;
+  --color-cinnabar: #c85a32; /* accents: crop frame, slider fill, pins */
+  --color-sage: #5e6953;
+  --color-sage-soft: #dbe7cb;
+  --color-sage-ink: #404a36;
+  --color-sienna: #8c5e3c;
+  --color-scrim: #352f2b;
+
+  --shadow-sheet: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --shadow-lifted: 0 8px 24px -4px rgba(46, 38, 32, 0.07), 0 2px 6px -1px rgba(46, 38, 32, 0.04);
+  --shadow-tray: 0 20px 40px -8px rgba(31, 26, 22, 0.12), 0 4px 12px -2px rgba(31, 26, 22, 0.06);
+  --shadow-well: inset 0 1px 3px rgba(31, 26, 22, 0.08), inset 0 0 0 1px #dfd5c7;
+  --shadow-stamp: inset 0 -1px 0 rgba(0, 0, 0, 0.2), 0 2px 6px -1px rgba(46, 38, 32, 0.12);
+}
+
+@layer base {
+  body {
+    @apply bg-desk text-ink font-sans antialiased;
+    font-size: 14px;
+    line-height: 22px;
+  }
+  button,
+  select,
+  input {
+    font-family: inherit;
+  }
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-cinnabar);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Surfaces */
+  .sheet {
+    @apply bg-sheet border border-hairline rounded-2xl shadow-sheet;
+  }
+  .well {
+    @apply bg-well shadow-well;
+  }
+
+  /* Type roles */
+  .label-caps {
+    @apply text-[11px] leading-[14px] font-semibold uppercase tracking-[0.05em] text-ink-muted;
+  }
+  .label-field {
+    @apply text-xs leading-4 font-semibold tracking-[0.03em] text-ink-muted;
+  }
+  .archival {
+    @apply font-serif text-[13px] leading-4 text-ink-muted;
+  }
+
+  /* Buttons */
+  .btn-stamp {
+    @apply inline-flex items-center justify-center gap-2 min-h-11 px-5 rounded-full bg-stamp text-desk text-sm font-semibold shadow-stamp transition-colors hover:bg-stamp-hover active:translate-y-px disabled:opacity-50 disabled:active:translate-y-0;
+  }
+  .btn-quiet {
+    @apply inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-full bg-well border border-fiber text-ink text-sm font-semibold transition-colors hover:bg-well-hover disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 min-h-11 px-4 rounded-full text-ink text-sm font-semibold transition-colors hover:bg-well disabled:opacity-40;
+  }
+  .btn-icon {
+    @apply inline-flex items-center justify-center size-10 shrink-0 rounded-full text-ink transition-colors hover:bg-well disabled:opacity-30;
+  }
+
+  /* Chips (typewriter keys) */
+  .chip {
+    @apply inline-flex items-center gap-1.5 min-h-9 px-3.5 rounded-full border text-[13px] font-semibold transition-colors;
+  }
+  .chip-off {
+    @apply bg-well border-fiber text-ink hover:bg-well-hover;
+  }
+  .chip-on {
+    @apply bg-ink border-ink text-desk;
+  }
+
+  /* Segmented control: a debossed track holding ivory caps */
+  .segmented {
+    @apply grid gap-0.5 p-[3px] rounded-full bg-well shadow-well;
+  }
+  .segment {
+    @apply min-h-9 rounded-full text-[13px] font-semibold text-ink-muted transition-colors hover:text-ink;
+  }
+  .segment-on {
+    @apply bg-desk text-ink shadow-[0_1px_3px_rgba(46,38,32,0.12)];
+  }
+
+  /* Paper-ring radio rows */
+  .radio-row {
+    @apply flex w-full items-center gap-3 min-h-12 px-3 py-1.5 rounded-lg border text-left text-ink transition-colors;
+  }
+  .radio-row-off {
+    @apply border-transparent hover:bg-well;
+  }
+  .radio-row-on {
+    @apply bg-white border-ink shadow-[0_2px_6px_-1px_rgba(46,38,32,0.08)];
+  }
+  .radio-ring {
+    @apply flex size-[18px] shrink-0 items-center justify-center rounded-full bg-desk;
+    box-shadow: inset 0 0 0 1.5px var(--color-dash);
+  }
+  .radio-ring-on {
+    box-shadow: inset 0 0 0 1.5px var(--color-ink);
+  }
+  .radio-ring-on::after {
+    content: '';
+    @apply size-2 rounded-full bg-ink;
+  }
+
+  /* Fields */
+  .field {
+    @apply h-10 w-full rounded-lg border border-fiber bg-desk px-3 text-sm font-semibold text-ink shadow-[inset_0_1px_3px_rgba(31,26,22,0.08)] focus:border-cinnabar focus:outline-none;
+  }
+
+  /* Tactile slider: debossed groove, cinnabar fill, ivory disc with an espresso pin */
+  .lp-range {
+    --fill: 50%;
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    margin: 0;
+    border-radius: 9999px;
+    background: linear-gradient(
+      to right,
+      var(--color-cinnabar) 0 var(--fill),
+      var(--color-well) var(--fill) 100%
+    );
+    box-shadow: inset 0 1px 3px rgba(31, 26, 22, 0.08), inset 0 0 0 1px var(--color-fiber);
+  }
+  .lp-range:disabled {
+    opacity: 0.4;
+  }
+  .lp-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--color-desk) radial-gradient(circle, var(--color-ink) 0 2px, transparent 2.5px);
+    box-shadow: 0 2px 6px rgba(46, 38, 32, 0.25), 0 0 0 1px var(--color-fiber);
+  }
+  .lp-range::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--color-desk) radial-gradient(circle, var(--color-ink) 0 2px, transparent 2.5px);
+    box-shadow: 0 2px 6px rgba(46, 38, 32, 0.25), 0 0 0 1px var(--color-fiber);
+  }
+}

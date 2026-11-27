@@ -1,20 +1,16 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
-  X,
-  RotateCw,
-  FlipHorizontal,
-  FlipVertical,
-  Grid,
+  ArrowLeftRight,
+  Check,
   ChevronLeft,
   ChevronRight,
   Download,
+  FlipHorizontal,
+  FlipVertical,
+  Grid,
   RotateCcw,
-  Check,
-  Maximize2,
-  Minimize2,
-  Move,
-  Sparkles,
-  ArrowLeftRight,
+  RotateCw,
+  X,
 } from 'lucide-react';
 import {
   COMMON_ASPECT_RATIOS,
@@ -449,186 +445,182 @@ export const ReframeModal: React.FC<ReframeModalProps> = ({
     };
   }, [dragMode, handlePointerMove, handlePointerUp]);
 
+  const qualityFill = `${(((item.quality ?? 0.92) - 0.5) / 0.5) * 100}%`;
+  const frameFill = `${((currentScale - 20) / 80) * 100}%`;
+  const proofWidth = cropAspect >= 1 ? 132 : Math.round(150 * cropAspect);
+  const isNative = item.resize.mode === 'native' || (item.resize.mode === 'scale' && item.resize.scalePercent === 100);
+
+  const toolButton = (pressed?: boolean) =>
+    `btn-icon ${pressed ? 'bg-ink text-desk hover:bg-ink' : ''}`;
+
   return (
     <div
       id="reframe-modal-backdrop"
-      className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 bg-scrim/40 backdrop-blur-[2px] flex items-center justify-center p-2 sm:p-4"
     >
       <div
         id="reframe-modal-dialog"
-        className="bg-slate-900 border border-slate-800 text-slate-100 w-full max-w-6xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[96vh]"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reframe-title"
+        className="w-full max-w-6xl max-h-[96vh] flex flex-col overflow-hidden rounded-2xl border border-hairline bg-desk text-ink shadow-tray"
       >
-        {/* Top Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-slate-900/90">
-          <div className="flex items-center gap-3">
-            <h3 className="text-sm sm:text-base font-bold text-white tracking-tight flex items-center gap-2">
-              <span>Reframe & Crop:</span>
-              <span className="text-indigo-400 font-semibold truncate max-w-xs">{item.name}</span>
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 py-3 border-b border-hairline">
+          <div className="flex items-baseline gap-3 min-w-0">
+            <h3
+              id="reframe-title"
+              className="m-0 min-w-0 truncate font-serif text-xl leading-7 font-medium tracking-[-0.01em] sm:text-[22px]"
+            >
+              Reframe · <em>{item.name}</em>
             </h3>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400 font-medium">
-              {currentIndex + 1} of {totalCount}
+            <span className="archival whitespace-nowrap">
+              Print {currentIndex + 1} of {totalCount}
             </span>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Prev / Next Nav */}
-            <div className="flex items-center bg-slate-800 rounded-xl p-0.5 border border-slate-700">
+            <div role="group" aria-label="Move between prints" className="segmented grid-cols-2">
               <button
                 type="button"
                 disabled={currentIndex === 0}
                 onClick={() => onNavigate(currentIndex - 1)}
-                className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition"
-                title="Previous image"
+                aria-label="Previous print"
+                title="Previous print (←)"
+                className="btn-icon size-9 hover:bg-desk"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <ChevronLeft className="size-4" aria-hidden="true" />
               </button>
               <button
                 type="button"
                 disabled={currentIndex === totalCount - 1}
                 onClick={() => onNavigate(currentIndex + 1)}
-                className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-300 disabled:opacity-30 transition"
-                title="Next image"
+                aria-label="Next print"
+                title="Next print (→)"
+                className="btn-icon size-9 hover:bg-desk"
               >
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="size-4" aria-hidden="true" />
               </button>
             </div>
-
             <button
               id="close-reframe-modal-btn"
               type="button"
               onClick={onClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              aria-label="Close and return to the contact sheet"
+              title="Close (Esc)"
+              className="btn-icon size-11"
             >
-              <X className="w-5 h-5" />
+              <X className="size-5" aria-hidden="true" />
             </button>
           </div>
         </div>
 
-        {/* Modal Main Body */}
+        {/* Body */}
         <div className="flex-1 min-h-0 grid grid-cols-1 grid-rows-[auto_minmax(0,1fr)] lg:grid-cols-3 lg:grid-rows-[minmax(0,1fr)] overflow-hidden">
-          {/* Main Stage: Full Image in original aspect ratio with overlay crop frame */}
-          <div className="lg:col-span-2 bg-slate-950 p-4 md:p-6 flex flex-col items-center justify-center relative select-none overflow-hidden">
+          {/* Proofing stage */}
+          <div className="lg:col-span-2 p-4 md:p-6 flex flex-col items-center justify-center gap-3 relative select-none overflow-hidden">
             {/* Fits the stage into whatever space the controls leave (like object-fit: contain). */}
             <div
-              className="w-full flex-1 min-h-[220px] max-h-[58vh] flex items-center justify-center"
+              className="well w-full flex-1 min-h-[220px] max-h-[58vh] box-border rounded-2xl p-4 flex items-center justify-center"
               style={{ containerType: 'size' }}
             >
-            {/* Container for original image and crop overlay */}
-            <div
-              ref={containerRef}
-              id="original-image-crop-canvas"
-              className="relative shrink-0 rounded-xl overflow-hidden shadow-2xl border border-slate-800"
-              style={{
-                aspectRatio: `${W} / ${H}`,
-                width: `min(100cqw, calc(100cqh * ${W / H}))`,
-              }}
-            >
-              {/* Full image, rotated and mirrored as it will be exported */}
-              <OrientedImage item={item} alt={item.name} />
+              <div className="shrink-0 bg-white p-1.5 rounded shadow-tray">
+                <div
+                  ref={containerRef}
+                  id="original-image-crop-canvas"
+                  className="relative overflow-hidden"
+                  style={{
+                    aspectRatio: `${W} / ${H}`,
+                    width: `min(calc(100cqw - 12px), calc((100cqh - 12px) * ${W / H}))`,
+                  }}
+                >
+                  {/* Full image, rotated and mirrored as it will be exported */}
+                  <OrientedImage item={item} alt={item.name} />
 
-              {/* Darkened Mask Panels outside the crop frame */}
-              {/* Top Mask */}
-              <div
-                className="absolute top-0 left-0 right-0 bg-slate-950/65 backdrop-blur-[1px] pointer-events-none transition-all duration-75"
-                style={{ height: `${activeCropBox.y * 100}%` }}
-              />
-              {/* Bottom Mask */}
-              <div
-                className="absolute left-0 right-0 bottom-0 bg-slate-950/65 backdrop-blur-[1px] pointer-events-none transition-all duration-75"
-                style={{
-                  top: `${(activeCropBox.y + activeCropBox.height) * 100}%`,
-                }}
-              />
-              {/* Left Mask */}
-              <div
-                className="absolute left-0 bg-slate-950/65 backdrop-blur-[1px] pointer-events-none transition-all duration-75"
-                style={{
-                  top: `${activeCropBox.y * 100}%`,
-                  height: `${activeCropBox.height * 100}%`,
-                  width: `${activeCropBox.x * 100}%`,
-                }}
-              />
-              {/* Right Mask */}
-              <div
-                className="absolute right-0 bg-slate-950/65 backdrop-blur-[1px] pointer-events-none transition-all duration-75"
-                style={{
-                  top: `${activeCropBox.y * 100}%`,
-                  height: `${activeCropBox.height * 100}%`,
-                  left: `${(activeCropBox.x + activeCropBox.width) * 100}%`,
-                }}
-              />
+                  {/* Dimmed surround outside the crop frame */}
+                  <div
+                    className="absolute top-0 left-0 right-0 bg-ink/50 pointer-events-none"
+                    style={{ height: `${activeCropBox.y * 100}%` }}
+                  />
+                  <div
+                    className="absolute left-0 right-0 bottom-0 bg-ink/50 pointer-events-none"
+                    style={{ top: `${(activeCropBox.y + activeCropBox.height) * 100}%` }}
+                  />
+                  <div
+                    className="absolute left-0 bg-ink/50 pointer-events-none"
+                    style={{
+                      top: `${activeCropBox.y * 100}%`,
+                      height: `${activeCropBox.height * 100}%`,
+                      width: `${activeCropBox.x * 100}%`,
+                    }}
+                  />
+                  <div
+                    className="absolute right-0 bg-ink/50 pointer-events-none"
+                    style={{
+                      top: `${activeCropBox.y * 100}%`,
+                      height: `${activeCropBox.height * 100}%`,
+                      left: `${(activeCropBox.x + activeCropBox.width) * 100}%`,
+                    }}
+                  />
 
-              {/* Interactive Crop Box */}
-              <div
-                id="interactive-crop-frame"
-                onMouseDown={(e) => startDrag(e, 'move')}
-                onTouchStart={(e) => startDrag(e, 'move')}
-                className={`absolute border-2 border-indigo-400 shadow-[0_0_0_1px_rgba(255,255,255,0.4)] cursor-move ${
-                  dragMode === 'move' ? 'cursor-grabbing' : 'cursor-grab'
-                }`}
-                style={{
-                  left: `${activeCropBox.x * 100}%`,
-                  top: `${activeCropBox.y * 100}%`,
-                  width: `${activeCropBox.width * 100}%`,
-                  height: `${activeCropBox.height * 100}%`,
-                }}
-              >
-                {/* Rule of Thirds Grid */}
-                {showGrid && (
-                  <div className="absolute inset-0 pointer-events-none grid grid-cols-3 grid-rows-3 border border-white/20">
-                    <div className="border-r border-b border-white/25" />
-                    <div className="border-r border-b border-white/25" />
-                    <div className="border-b border-white/25" />
-                    <div className="border-r border-b border-white/25" />
-                    <div className="border-r border-b border-white/25" />
-                    <div className="border-b border-white/25" />
-                    <div className="border-r border-b border-white/25" />
-                    <div className="border-r border-b border-white/25" />
-                    <div />
+                  {/* Interactive crop frame */}
+                  <div
+                    id="interactive-crop-frame"
+                    onMouseDown={(e) => startDrag(e, 'move')}
+                    onTouchStart={(e) => startDrag(e, 'move')}
+                    className={`absolute border-2 border-cinnabar ${
+                      dragMode === 'move' ? 'cursor-grabbing' : 'cursor-grab'
+                    }`}
+                    style={{
+                      left: `${activeCropBox.x * 100}%`,
+                      top: `${activeCropBox.y * 100}%`,
+                      width: `${activeCropBox.width * 100}%`,
+                      height: `${activeCropBox.height * 100}%`,
+                    }}
+                  >
+                    {showGrid && (
+                      <div className="absolute inset-0 pointer-events-none grid grid-cols-3 grid-rows-3">
+                        {Array.from({ length: 9 }, (_, i) => (
+                          <span
+                            key={i}
+                            className={`border-desk/55 ${i % 3 !== 2 ? 'border-r' : ''} ${i < 6 ? 'border-b' : ''}`}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    <span className="pointer-events-none absolute top-2 left-2 rounded-full bg-ink/80 px-2.5 text-[11px] leading-[18px] font-semibold tracking-[0.05em] text-desk whitespace-nowrap">
+                      {currentRatio.name} · {cropCoords.outputWidth} × {cropCoords.outputHeight}
+                    </span>
+
+                    {(
+                      [
+                        ['tl', '-top-[7px] -left-[7px] cursor-nwse-resize'],
+                        ['tr', '-top-[7px] -right-[7px] cursor-nesw-resize'],
+                        ['bl', '-bottom-[7px] -left-[7px] cursor-nesw-resize'],
+                        ['br', '-bottom-[7px] -right-[7px] cursor-nwse-resize'],
+                      ] as const
+                    ).map(([corner, pos]) => (
+                      <div
+                        key={corner}
+                        onMouseDown={(e) => startDrag(e, corner)}
+                        onTouchStart={(e) => startDrag(e, corner)}
+                        className={`absolute size-3 rounded-[3px] bg-desk ring-2 ring-cinnabar transition-transform hover:scale-125 ${pos}`}
+                      />
+                    ))}
                   </div>
-                )}
-
-                {/* Aspect Ratio Badge attached to crop frame */}
-                <div className="absolute top-1.5 left-1.5 pointer-events-none">
-                  <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-black/80 backdrop-blur text-white border border-white/20 shadow">
-                    {currentRatio.name} · {cropCoords.outputWidth}×{cropCoords.outputHeight}
-                  </span>
                 </div>
-
-                {/* Corner Resize Handles */}
-                {/* Top-Left */}
-                <div
-                  onMouseDown={(e) => startDrag(e, 'tl')}
-                  onTouchStart={(e) => startDrag(e, 'tl')}
-                  className="absolute -top-1.5 -left-1.5 w-3.5 h-3.5 bg-white border-2 border-indigo-600 rounded-sm shadow cursor-nwse-resize hover:scale-125 transition-transform"
-                />
-                {/* Top-Right */}
-                <div
-                  onMouseDown={(e) => startDrag(e, 'tr')}
-                  onTouchStart={(e) => startDrag(e, 'tr')}
-                  className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-white border-2 border-indigo-600 rounded-sm shadow cursor-nesw-resize hover:scale-125 transition-transform"
-                />
-                {/* Bottom-Left */}
-                <div
-                  onMouseDown={(e) => startDrag(e, 'bl')}
-                  onTouchStart={(e) => startDrag(e, 'bl')}
-                  className="absolute -bottom-1.5 -left-1.5 w-3.5 h-3.5 bg-white border-2 border-indigo-600 rounded-sm shadow cursor-nesw-resize hover:scale-125 transition-transform"
-                />
-                {/* Bottom-Right */}
-                <div
-                  onMouseDown={(e) => startDrag(e, 'br')}
-                  onTouchStart={(e) => startDrag(e, 'br')}
-                  className="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 bg-white border-2 border-indigo-600 rounded-sm shadow cursor-nwse-resize hover:scale-125 transition-transform"
-                />
               </div>
             </div>
-            </div>
 
-            {/* Viewport Floating Controls Bar */}
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-3 bg-slate-900/95 backdrop-blur border border-slate-800 rounded-2xl px-4 py-2 shadow-lg">
-              {/* Frame Size Slider */}
-              <div className="flex items-center gap-2">
-                <Minimize2 className="w-3.5 h-3.5 text-slate-400" />
+            {/* Frame tools */}
+            <div
+              role="toolbar"
+              aria-label="Frame tools"
+              className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1.5 rounded-full border border-hairline bg-sheet px-2.5 py-1.5 shadow-lifted"
+            >
+              <label className="label-field flex items-center gap-2.5 px-2">
+                Frame size
                 <input
                   id="modal-frame-size-slider"
                   type="range"
@@ -637,218 +629,178 @@ export const ReframeModal: React.FC<ReframeModalProps> = ({
                   step="1"
                   value={currentScale}
                   onChange={(e) => handleScaleSliderChange(parseInt(e.target.value, 10))}
-                  className="w-24 md:w-32 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                  className="lp-range w-24 md:w-32"
+                  style={{ '--fill': frameFill } as React.CSSProperties}
                 />
-                <Maximize2 className="w-3.5 h-3.5 text-slate-400" />
-                <span className="text-xs font-mono text-slate-300 w-10 text-right">
+                <span className="font-serif text-[13px] text-ink w-9 text-right tracking-normal">
                   {currentScale}%
                 </span>
-              </div>
-
-              <div className="w-px h-5 bg-slate-700 mx-1 hidden sm:block" />
-
-              {/* Grid Toggle */}
+              </label>
+              <span aria-hidden="true" className="w-px h-6 bg-fiber" />
               <button
                 type="button"
                 onClick={() => setShowGrid(!showGrid)}
-                className={`p-2 rounded-xl text-xs font-semibold flex items-center gap-1 transition ${
-                  showGrid ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
-                }`}
-                title="Toggle composition grid"
+                aria-label="Composition grid"
+                aria-pressed={showGrid}
+                title="Composition grid"
+                className={toolButton(showGrid)}
               >
-                <Grid className="w-4 h-4" />
+                <Grid className="size-4" aria-hidden="true" />
               </button>
-
-              {/* Rotate 90° */}
               <button
                 type="button"
                 onClick={handleRotate}
-                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+                aria-label="Rotate 90° clockwise"
                 title="Rotate 90°"
+                className={toolButton()}
               >
-                <RotateCw className="w-4 h-4" />
+                <RotateCw className="size-4" aria-hidden="true" />
               </button>
-
-              {/* Flip Horizontal */}
               <button
                 type="button"
                 onClick={handleFlipH}
-                className={`p-2 rounded-xl transition ${
-                  item.reframe.flipH
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-                }`}
+                aria-label="Mirror horizontally"
+                aria-pressed={item.reframe.flipH}
                 title="Flip Horizontally"
+                className={toolButton(item.reframe.flipH)}
               >
-                <FlipHorizontal className="w-4 h-4" />
+                <FlipHorizontal className="size-4" aria-hidden="true" />
               </button>
-
-              {/* Flip Vertical */}
               <button
                 type="button"
                 onClick={handleFlipV}
-                className={`p-2 rounded-xl transition ${
-                  item.reframe.flipV
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-                }`}
+                aria-label="Mirror vertically"
+                aria-pressed={item.reframe.flipV}
                 title="Flip Vertically"
+                className={toolButton(item.reframe.flipV)}
               >
-                <FlipVertical className="w-4 h-4" />
+                <FlipVertical className="size-4" aria-hidden="true" />
               </button>
-
-              {/* Reset */}
               <button
                 type="button"
                 onClick={handleResetReframe}
-                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition"
+                aria-label="Reset framing and orientation"
                 title="Reset frame position and orientation"
+                className={`${toolButton()} text-ink-muted`}
               >
-                <RotateCcw className="w-4 h-4" />
+                <RotateCcw className="size-4" aria-hidden="true" />
               </button>
             </div>
 
-            <p className="text-[11px] text-slate-500 mt-2 flex items-center gap-1.5">
-              <Move className="w-3 h-3 text-indigo-400" />
-              <span>Drag frame to reposition · Drag corners to resize · Adjust slider for scale</span>
+            <p className="archival m-0 text-center">
+              Drag the frame to reposition · drag a corner to resize · ← → move between prints
             </p>
           </div>
 
-          {/* Right Panel: Settings, Live Preview & Ratios */}
-          <div className="p-5 md:p-6 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 overflow-y-auto space-y-5">
-            {/* Live Cropped Result Preview */}
-            <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Cropped Output Preview
-                </span>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-950 border border-emerald-800 text-emerald-300">
-                  Native 100% Quality
-                </span>
-              </div>
-
-              {/* Live Preview Container matching target aspect ratio */}
-              <div className="flex items-center justify-center py-2">
+          {/* Inspector */}
+          <div className="bg-sheet border-t lg:border-t-0 lg:border-l border-hairline p-5 overflow-y-auto flex flex-col gap-[22px]">
+            {/* Proof */}
+            <div className="flex items-center gap-4">
+              <div className="shrink-0 bg-white border border-hairline rounded p-1 shadow-lifted">
                 <div
-                  className="relative overflow-hidden rounded-lg shadow-md border border-slate-700 bg-slate-900"
-                  style={{
-                    aspectRatio: `${cropAspect}`,
-                    width: cropAspect >= 1 ? 'min(100%, 220px)' : `${Math.round(180 * cropAspect)}px`,
-                  }}
+                  className="relative overflow-hidden"
+                  style={{ width: `${proofWidth}px`, aspectRatio: `${cropAspect}` }}
                 >
-                  <CroppedImage item={item} cropBox={activeCropBox} alt="Cropped Preview" />
+                  <CroppedImage item={item} cropBox={activeCropBox} alt="Cropped proof" />
                 </div>
               </div>
-
-              {/* Dimensions Readout */}
-              <div className="space-y-1 pt-2 border-t border-slate-800 text-xs">
-                <div className="flex justify-between text-slate-400">
-                  <span>Source Original:</span>
-                  <span className="font-mono text-slate-300">
-                    {item.originalWidth} × {item.originalHeight} px
+              <div className="min-w-0 flex flex-col gap-1.5">
+                <span className="label-caps">Proof</span>
+                <div className="flex flex-col">
+                  <span className="archival leading-[18px]">
+                    Source {item.originalWidth} × {item.originalHeight} px
+                  </span>
+                  <span className="font-serif text-lg leading-6 font-semibold text-stamp">
+                    Export {cropCoords.outputWidth} × {cropCoords.outputHeight} px
                   </span>
                 </div>
-                <div className="flex justify-between font-bold text-white">
-                  <span>Export Crop:</span>
-                  <span className="font-mono text-indigo-400">
-                    {cropCoords.outputWidth} × {cropCoords.outputHeight} px
-                  </span>
-                </div>
+                <span
+                  className={`self-start rounded-full px-2.5 text-[11px] leading-[18px] font-semibold tracking-[0.05em] ${
+                    isNative ? 'bg-sage-soft text-sage-ink' : 'bg-well text-ink-muted'
+                  }`}
+                >
+                  {isNative ? 'Native pixels' : 'Resized on export'}
+                </span>
               </div>
             </div>
 
-            {/* Aspect Ratio Selector with Custom Ratio */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Aspect Ratio
-                </label>
-                {isCustomRatio && (
-                  <span className="text-[11px] font-bold text-indigo-400 bg-indigo-950/70 border border-indigo-700/60 px-2 py-0.5 rounded-md">
-                    Custom {parsedCustom?.width}:{parsedCustom?.height}
-                  </span>
-                )}
+            {/* Stock */}
+            <div className="flex flex-col gap-2.5">
+              <span id="modal-stock-label" className="label-field">
+                Stock
+              </span>
+              <div role="radiogroup" aria-labelledby="modal-stock-label" className="flex flex-wrap gap-1.5">
+                {COMMON_ASPECT_RATIOS.map((ratio) => {
+                  const checked = item.aspectRatioId === ratio.id;
+                  return (
+                    <button
+                      key={ratio.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={checked}
+                      title={ratio.description}
+                      onClick={() => handleRatioSelect(ratio.id)}
+                      className={`chip ${checked ? 'chip-on' : 'chip-off'}`}
+                    >
+                      {ratio.name}
+                    </button>
+                  );
+                })}
               </div>
 
-              {/* Custom Ratio Input Card */}
               <div
                 id="custom-ratio-editor-card"
-                className={`p-3 rounded-2xl border transition-all space-y-2.5 ${
-                  isCustomRatio
-                    ? 'bg-indigo-950/30 border-indigo-500 shadow-sm'
-                    : 'bg-slate-950/40 border-slate-800 hover:border-slate-700'
+                className={`rounded-lg border p-3 flex flex-col gap-2.5 transition-colors ${
+                  isCustomRatio ? 'border-ink bg-white' : 'border-hairline bg-desk'
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => applyCustomRatio(customW, customH)}
-                    className="flex items-center gap-2 text-left w-full"
-                  >
-                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                      <span>Custom Ratio</span>
-                      {isCustomRatio && <Check className="w-3.5 h-3.5 text-indigo-400" />}
-                    </span>
-                    <span className="text-[10px] text-slate-400 ml-auto">
-                      Enter any Width : Height
-                    </span>
-                  </button>
+                  <span className="text-[13px] font-semibold flex items-center gap-1.5">
+                    Custom ratio
+                    {isCustomRatio && <Check className="size-3.5 text-stamp" aria-hidden="true" />}
+                  </span>
+                  <span className="archival">Any width : height</span>
                 </div>
-
-                {/* Input Fields & Swap Button */}
-                <div className="flex items-center gap-2">
-                  <div className="flex-1">
-                    <div className="flex items-center bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500">
-                      <span className="text-[10px] text-slate-500 font-bold mr-1.5 uppercase select-none">
-                        W
-                      </span>
-                      <input
-                        id="custom-ratio-modal-width"
-                        type="number"
-                        min="0.1"
-                        step="any"
-                        value={customW}
-                        onChange={(e) => handleCustomWChange(e.target.value)}
-                        placeholder="5"
-                        className="w-full bg-transparent text-xs font-mono font-bold text-white focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <span className="text-slate-500 font-bold text-sm">:</span>
-
-                  <div className="flex-1">
-                    <div className="flex items-center bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500">
-                      <span className="text-[10px] text-slate-500 font-bold mr-1.5 uppercase select-none">
-                        H
-                      </span>
-                      <input
-                        id="custom-ratio-modal-height"
-                        type="number"
-                        min="0.1"
-                        step="any"
-                        value={customH}
-                        onChange={(e) => handleCustomHChange(e.target.value)}
-                        placeholder="7"
-                        className="w-full bg-transparent text-xs font-mono font-bold text-white focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
+                <div className="flex items-end gap-2">
+                  <label className="flex-1 min-w-0 flex flex-col gap-1 label-field">
+                    Width
+                    <input
+                      id="custom-ratio-modal-width"
+                      type="number"
+                      min="0.1"
+                      step="any"
+                      value={customW}
+                      onChange={(e) => handleCustomWChange(e.target.value)}
+                      className="field"
+                    />
+                  </label>
+                  <span aria-hidden="true" className="font-serif text-xl leading-10 text-ink-muted">
+                    :
+                  </span>
+                  <label className="flex-1 min-w-0 flex flex-col gap-1 label-field">
+                    Height
+                    <input
+                      id="custom-ratio-modal-height"
+                      type="number"
+                      min="0.1"
+                      step="any"
+                      value={customH}
+                      onChange={(e) => handleCustomHChange(e.target.value)}
+                      className="field"
+                    />
+                  </label>
                   <button
                     id="swap-custom-ratio-button"
                     type="button"
                     onClick={handleSwapCustom}
-                    title="Swap Width and Height (Flip orientation)"
-                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+                    aria-label="Swap width and height"
+                    title="Swap width and height"
+                    className="btn-quiet size-10 min-h-0 px-0 shrink-0"
                   >
-                    <ArrowLeftRight className="w-3.5 h-3.5" />
+                    <ArrowLeftRight className="size-4" aria-hidden="true" />
                   </button>
                 </div>
-
-                {/* Quick Presets */}
-                <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-800/80">
-                  <span className="text-[10px] text-slate-500 font-medium">Quick presets:</span>
+                <div className="flex flex-wrap gap-1.5" aria-label="Custom presets">
                   {[
                     { label: '5:7', w: 5, h: 7 },
                     { label: '7:5', w: 7, h: 5 },
@@ -861,126 +813,91 @@ export const ReframeModal: React.FC<ReframeModalProps> = ({
                       key={preset.label}
                       type="button"
                       onClick={() => handleSelectPreset(preset.w, preset.h)}
-                      className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-[10px] font-mono text-slate-300 hover:text-white transition"
+                      className="chip chip-off min-h-8 px-3 text-xs font-serif"
                     >
                       {preset.label}
                     </button>
                   ))}
                 </div>
               </div>
-
-              {/* Standard presets grid */}
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                {COMMON_ASPECT_RATIOS.map((ratio) => {
-                  const isSelected = item.aspectRatioId === ratio.id;
-                  return (
-                    <button
-                      key={ratio.id}
-                      type="button"
-                      onClick={() => handleRatioSelect(ratio.id)}
-                      className={`p-2.5 rounded-xl text-left border transition flex flex-col justify-between ${
-                        isSelected
-                          ? 'bg-indigo-600/25 border-indigo-500 text-white shadow-sm'
-                          : 'bg-slate-950/40 border-slate-800 hover:border-slate-700 text-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between w-full mb-1">
-                        <span className="text-xs font-bold">{ratio.name}</span>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-indigo-400" />}
-                      </div>
-                      <span className="text-[10px] text-slate-400 line-clamp-1">
-                        {ratio.description}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
             </div>
 
-            {/* Quick Reframe Anchors */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                Quick Reframe Position
-              </label>
-              <div className="grid grid-cols-5 gap-1.5">
-                {[
-                  { label: 'Left', id: 'left' as const },
-                  { label: 'Center', id: 'center' as const },
-                  { label: 'Right', id: 'right' as const },
-                  { label: 'Top', id: 'top' as const },
-                  { label: 'Bottom', id: 'bottom' as const },
-                ].map((pos) => (
+            {/* Quick position */}
+            <div className="flex flex-col gap-2.5">
+              <span id="quick-position-label" className="label-field">
+                Quick position
+              </span>
+              <div role="group" aria-labelledby="quick-position-label" className="segmented grid-cols-5">
+                {(
+                  [
+                    ['left', 'Left'],
+                    ['center', 'Centre'],
+                    ['right', 'Right'],
+                    ['top', 'Top'],
+                    ['bottom', 'Bottom'],
+                  ] as const
+                ).map(([id, label]) => (
                   <button
-                    key={pos.id}
+                    key={id}
                     type="button"
-                    onClick={() => handleQuickAlign(pos.id)}
-                    className="py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-medium text-slate-300 transition text-center"
+                    onClick={() => handleQuickAlign(id)}
+                    className="segment text-xs hover:bg-desk"
                   >
-                    {pos.label}
+                    {label}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Output Format and Quality */}
-            <div className="space-y-3 pt-2 border-t border-slate-800">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                  Output Format
-                </label>
+            {/* Format and quality */}
+            <div className="flex flex-col gap-2.5">
+              <label className="label-field flex flex-col gap-1.5">
+                Output format
                 <select
                   value={item.outputFormat}
                   onChange={(e) => handleFormatSelect(e.target.value as OutputFormat)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="field h-11 tracking-normal"
                 >
-                  <option value="original">Keep Original</option>
-                  <option value="jpeg">JPEG (.jpg) — Universal</option>
-                  <option value="png">PNG (.png) — Lossless</option>
-                  <option value="webp">WebP (.webp) — Optimized web</option>
+                  <option value="original">Keep original</option>
+                  <option value="jpeg">JPEG — universal</option>
+                  <option value="png">PNG — lossless</option>
+                  <option value="webp">WebP — smallest files</option>
                 </select>
-              </div>
-
+              </label>
               {!exportsAsPng && (
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                      Compression Quality
+                <>
+                  <div className="flex items-baseline justify-between mt-1">
+                    <label htmlFor="modal-quality-slider" className="label-field">
+                      Compression quality
                     </label>
-                    <span className="text-xs font-bold text-indigo-400">
+                    <span className="font-serif text-lg leading-6 font-semibold text-stamp">
                       {Math.round((item.quality ?? 0.92) * 100)}%
                     </span>
                   </div>
                   <input
+                    id="modal-quality-slider"
                     type="range"
                     min="0.5"
                     max="1.0"
                     step="0.02"
                     value={item.quality ?? 0.92}
                     onChange={(e) => onUpdateItem({ ...item, quality: parseFloat(e.target.value) })}
-                    className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                    className="lp-range"
+                    style={{ '--fill': qualityFill } as React.CSSProperties}
                   />
-                </div>
+                </>
               )}
             </div>
 
-            {/* Action buttons */}
-            <div className="pt-3 border-t border-slate-800 flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => downloadSingleImage(item)}
-                className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center justify-center gap-2 transition"
-              >
-                <Download className="w-4 h-4" />
-                Download This Image
+            {/* Actions */}
+            <div className="mt-auto border-t border-fiber pt-[18px] flex flex-col gap-2.5">
+              <button type="button" onClick={onClose} className="btn-stamp min-h-12 text-[15px]">
+                <Check className="size-[17px]" aria-hidden="true" />
+                Done — back to the sheet
               </button>
-
-              <button
-                type="button"
-                onClick={onClose}
-                className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5 shadow-sm transition"
-              >
-                <Check className="w-4 h-4" />
-                Done & Return to Batch
+              <button type="button" onClick={() => downloadSingleImage(item)} className="btn-quiet">
+                <Download className="size-4" aria-hidden="true" />
+                Download this proof
               </button>
             </div>
           </div>
